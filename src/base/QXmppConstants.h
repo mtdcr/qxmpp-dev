@@ -36,6 +36,8 @@ extern const char* ns_session;
 extern const char* ns_stanza;
 // XEP-0009: Jabber-RPC
 extern const char* ns_rpc;
+// XEP-0016: Privacy Lists
+extern const char *ns_privacy;
 // XEP-0020: Feature Negotiation
 extern const char* ns_feature_negotiation;
 // XEP-0030: Service Discovery
