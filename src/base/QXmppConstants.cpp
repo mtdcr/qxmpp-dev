@@ -35,6 +35,8 @@ const char* ns_session = "urn:ietf:params:xml:ns:xmpp-session";
 const char* ns_stanza = "urn:ietf:params:xml:ns:xmpp-stanzas";
 // XEP-0009: Jabber-RPC
 const char* ns_rpc = "jabber:iq:rpc";
+// XEP-0016: Privacy Lists
+const char *ns_privacy = "jabber:iq:privacy";
 // XEP-0020: Feature Negotiation
 const char* ns_feature_negotiation = "http://jabber.org/protocol/feature-neg";
 // XEP-0030: Service Discovery
