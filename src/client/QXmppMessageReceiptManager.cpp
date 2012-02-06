@@ -35,10 +35,33 @@
 
 QXmppMessageReceiptManager::QXmppMessageReceiptManager()
     : QXmppClientExtension()
+    , m_autoReceipt(true)
 {
 }
 
 /// \cond
+bool QXmppMessageReceiptManager::autoReceipt() const
+{
+    return m_autoReceipt;
+}
+
+void QXmppMessageReceiptManager::setAutoReceipt(bool autoReceipt)
+{
+    m_autoReceipt = autoReceipt;
+}
+
+/** Sends a receipt for the specified message.
+ */
+void QXmppMessageReceiptManager::sendReceipt(const QString &jid, const QString &id)
+{
+    if (!jid.isEmpty() && !id.isEmpty()) {
+        QXmppMessage msg;
+        msg.setTo(jid);
+        msg.setReceiptId(id);
+        client()->sendPacket(msg);
+    }
+}
+
 QStringList QXmppMessageReceiptManager::discoveryFeatures() const
 {
     return QStringList(ns_message_receipts);
@@ -58,15 +81,9 @@ bool QXmppMessageReceiptManager::handleStanza(const QDomElement &stanza)
         return true;
     }
 
-    // If requested, send a receipt.
-    if (message.isReceiptRequested()
-        && !message.from().isEmpty()
-        && !message.id().isEmpty()) {
-        QXmppMessage receipt;
-        receipt.setTo(message.from());
-        receipt.setReceiptId(message.id());
-        client()->sendPacket(receipt);
-    }
+    // If autoreceipt is enabled, send a receipt.
+    if (m_autoReceipt && message.isReceiptRequested())
+        sendReceipt(message.from(), message.id());
 
     // Continue processing.
     return false;
