@@ -64,10 +64,12 @@ public:
     QString name;
     QString description;
     qint64 size;
+    qint64 rangeOffset;
+    qint64 rangeLength;
 };
 
 QXmppTransferFileInfoPrivate::QXmppTransferFileInfoPrivate()
-    : size(0)
+    : size(0), rangeOffset(0), rangeLength(0)
 {
 }
 
@@ -135,6 +137,21 @@ void QXmppTransferFileInfo::setSize(qint64 size)
     d->size = size;
 }
 
+bool QXmppTransferFileInfo::hasRange() const
+{
+    return d->hasRange;
+}
+
+qint64 QXmppTransferFileInfo::rangeOffset() const
+{
+    return d->rangeOffset;
+}
+
+qint64 QXmppTransferFileInfo::rangeLength() const
+{
+    return d->rangeLength;
+}
+
 bool QXmppTransferFileInfo::isNull() const
 {
     return d->date.isNull()
@@ -164,12 +181,36 @@ void QXmppTransferFileInfo::parse(const QDomElement &element)
     d->name = element.attribute("name");
     d->size = element.attribute("size").toLongLong();
     d->description = element.firstChildElement("desc").text();
+    d->rangeOffset = 0;
+    d->rangeLength = d->size;
+
+    QDomElement range = element.firstChildElement("range");
+    if (!range.isNull()) {
+        bool ok;
+
+        QString soffset = range.attribute("offset");
+        if (!soffset.isNull()) {
+            qint64 offset = soffset.toLongLong(&ok);
+            if (ok && offset >= 0 && offset <= d->size) {
+                d->rangeOffset = offset;
+                d->rangeLength = d->size - offset;
+            }
+        }
+
+        QString slength = range.attribute("length");
+        if (!slength.isNull()) {
+            qint64 length = slength.toLongLong(&ok);
+            if (ok && length >= 0 && d->rangeOffset + length <= d->size)
+                d->rangeLength = length;
+        }
+    }
 }
 
 void QXmppTransferFileInfo::toXml(QXmlStreamWriter *writer) const
 {
     writer->writeStartElement("file");
     writer->writeAttribute("xmlns", ns_stream_initiation_file_transfer);
+    writer->writeEmptyElement("range");
     if (d->date.isValid())
         writer->writeAttribute("date", QXmppUtils::datetimeToString(d->date));
     if (!d->hash.isEmpty())
@@ -192,6 +233,7 @@ public:
     QXmppClient *client;
     QXmppTransferJob::Direction direction;
     qint64 done;
+    qint64 size;
     QXmppTransferJob::Error error;
     QCryptographicHash hash;
     QIODevice *iodevice;
@@ -221,6 +263,7 @@ QXmppTransferJobPrivate::QXmppTransferJobPrivate()
     : blockSize(16384),
     client(0),
     done(0),
+    size(0),
     error(QXmppTransferJob::NoError),
     hash(QCryptographicHash::Md5),
     iodevice(0),
@@ -670,7 +713,7 @@ void QXmppTransferOutgoingJob::_q_disconnected()
     if (d->state == QXmppTransferJob::FinishedState)
         return;
 
-    if (fileSize() && d->done != fileSize())
+    if (d->size && d->done != d->size)
         terminate(QXmppTransferJob::ProtocolError);
     else
         terminate(QXmppTransferJob::NoError);
@@ -699,15 +742,16 @@ void QXmppTransferOutgoingJob::_q_sendData()
         return;
 
     // check whether we have written the whole file
-    if (d->fileInfo.size() && d->done >= d->fileInfo.size())
+    if (d->size && d->done >= d->size)
     {
         if (!d->socksSocket->bytesToWrite())
             terminate(QXmppTransferJob::NoError);
         return;
     }
 
-    char *buffer = new char[d->blockSize];
-    qint64 length = d->iodevice->read(buffer, d->blockSize);
+    qint64 size = qMin((qint64)d->blockSize, d->size - d->done);
+    char *buffer = new char[size];
+    qint64 length = d->iodevice->read(buffer, size);
     if (length < 0)
     {
         delete [] buffer;
@@ -719,7 +763,7 @@ void QXmppTransferOutgoingJob::_q_sendData()
         d->socksSocket->write(buffer, length);
         delete [] buffer;
         d->done += length;
-        emit progress(d->done, fileSize());
+        emit progress(d->done, d->size);
     }
 }
 /// \endcond
@@ -1103,7 +1147,8 @@ void QXmppTransferManager::ibbResponseReceived(const QXmppIq &iq)
 
     if (iq.type() == QXmppIq::Result)
     {
-        const QByteArray buffer = job->d->iodevice->read(job->d->blockSize);
+        qint64 size = qMin((qint64)job->d->blockSize, job->d->size - job->d->done);
+        const QByteArray buffer = job->d->iodevice->read(size);
         job->setState(QXmppTransferJob::TransferState);
         if (buffer.size())
         {
@@ -1117,7 +1162,7 @@ void QXmppTransferManager::ibbResponseReceived(const QXmppIq &iq)
             client()->sendPacket(dataIq);
 
             job->d->done += buffer.size();
-            job->progress(job->d->done, job->fileSize());
+            job->progress(job->d->done, job->d->size);
         } else {
             // close the bytestream
             QXmppIbbCloseIq closeIq;
@@ -1403,6 +1448,9 @@ QXmppTransferJob *QXmppTransferManager::sendFile(const QString &jid, QIODevice *
     job->d->requestId = request.id();
     client()->sendPacket(request);
 
+    // default to the file size, unless a range element gets received
+    job->d->size = job->fileSize();
+
     // notify user
     emit jobStarted(job);
 
@@ -1489,6 +1537,10 @@ void QXmppTransferManager::streamInitiationResultReceived(const QXmppStreamIniti
         }
     }
 
+    QXmppTransferFileInfo fileInfo = iq.fileInfo();
+    job->d->iodevice->seek(fileInfo.rangeOffset());
+    job->d->size = fileInfo.rangeLength();
+    
     // remote party accepted stream initiation
     job->setState(QXmppTransferJob::StartState);
     if (job->method() == QXmppTransferJob::InBandMethod)
