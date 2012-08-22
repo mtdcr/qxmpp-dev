@@ -64,12 +64,13 @@ public:
     QString name;
     QString description;
     qint64 size;
+    bool hasRange;
     qint64 rangeOffset;
     qint64 rangeLength;
 };
 
 QXmppTransferFileInfoPrivate::QXmppTransferFileInfoPrivate()
-    : size(0), rangeOffset(0), rangeLength(0)
+    : size(0), hasRange(false), rangeOffset(0), rangeLength(0)
 {
 }
 
@@ -185,7 +186,8 @@ void QXmppTransferFileInfo::parse(const QDomElement &element)
     d->rangeLength = d->size;
 
     QDomElement range = element.firstChildElement("range");
-    if (!range.isNull()) {
+    d->hasRange = !range.isNull();
+    if (d->hasRange) {
         bool ok;
 
         QString soffset = range.attribute("offset");
@@ -298,12 +300,15 @@ void QXmppTransferJob::abort()
 /// Call this method if you wish to accept an incoming transfer job.
 ///
 
-void QXmppTransferJob::accept(const QString &filePath)
+void QXmppTransferJob::accept(const QString &filePath, bool resume)
 {
     if (d->direction == IncomingDirection && d->state == OfferState && !d->iodevice)
     {
+        if (!d->fileInfo.hasRange())
+            resume = false;
+
         QFile *file = new QFile(filePath, this);
-        if (!file->open(QIODevice::WriteOnly))
+        if (!file->open(QIODevice::WriteOnly | resume ? QIODevice::Append : QIODevice::Truncate))
         {
             warning(QString("Could not write to %1").arg(filePath));
             abort();
@@ -313,18 +318,31 @@ void QXmppTransferJob::accept(const QString &filePath)
         d->iodevice = file;
         setLocalFileUrl(QUrl::fromLocalFile(filePath));
         setState(QXmppTransferJob::StartState);
+
+        if (resume) {
+          file->seek(file->size());
+          d->size -= qMin(d->size, file->size());
+        }
     }
 }
 
 /// Call this method if you wish to accept an incoming transfer job.
 ///
 
-void QXmppTransferJob::accept(QIODevice *iodevice)
+void QXmppTransferJob::accept(QIODevice *iodevice, bool resume)
 {
     if (d->direction == IncomingDirection && d->state == OfferState && !d->iodevice)
     {
+        if (!d->fileInfo.hasRange())
+            resume = false;
+
         d->iodevice = iodevice;
         setState(QXmppTransferJob::StartState);
+
+        if (resume && !iodevice->isSequential() && (iodevice->openMode() & QIODevice::Append)) {
+          iodevice->seek(iodevice->size());
+          d->size -= qMin(d->size, iodevice->size());
+        }
     }
 }
 
@@ -493,7 +511,7 @@ QXmppTransferIncomingJob::QXmppTransferIncomingJob(const QString& jid, QXmppClie
 
 void QXmppTransferIncomingJob::checkData()
 {
-    if ((d->fileInfo.size() && d->done != d->fileInfo.size()) ||
+    if ((d->size && d->done != d->size) ||
         (!d->fileInfo.hash().isEmpty() && d->hash.result() != d->fileInfo.hash()))
         terminate(QXmppTransferJob::FileCorruptError);
     else
@@ -572,7 +590,7 @@ bool QXmppTransferIncomingJob::writeData(const QByteArray &data)
     d->done += written;
     if (!d->fileInfo.hash().isEmpty())
         d->hash.addData(data);
-    emit progress(d->done, d->fileInfo.size());
+    emit progress(d->done, d->size);
     return true;
 }
 
@@ -1605,6 +1623,7 @@ void QXmppTransferManager::streamInitiationSetReceived(const QXmppStreamInitiati
     job->d->sid = iq.siId();
     job->d->mimeType = iq.mimeType();
     job->d->fileInfo = iq.fileInfo();
+    job->d->size = job->d->fileInfo.size();
     foreach (const QXmppDataForm::Field &field, iq.featureForm().fields()) {
         if (field.key() == "stream-method") {
             QPair<QString, QString> option;
