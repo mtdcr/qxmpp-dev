@@ -429,6 +429,15 @@ QXmppTransferJob::Method QXmppTransferJob::method() const
     return d->method;
 }
 
+/// Returns whether the peer supports ranged file transfers
+/// to resume interrupted incoming transfers.
+///
+
+bool QXmppTransferJob::isResumable() const
+{
+    return d->fileInfo.hasRange();
+}
+
 /// Returns the job's session identifier.
 ///
 
