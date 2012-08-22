@@ -65,6 +65,7 @@ public:
     qint64 size() const;
     void setSize(qint64 size);
 
+    bool hasRange() const;
     qint64 rangeOffset() const;
     qint64 rangeLength() const;
 
@@ -184,8 +185,8 @@ signals:
 
 public slots:
     void abort();
-    void accept(const QString &filePath);
-    void accept(QIODevice *output);
+    void accept(const QString &filePath, bool resume = false);
+    void accept(QIODevice *output, bool resume = false);
 
 private slots:
     void _q_terminated();
