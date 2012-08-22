@@ -152,6 +152,7 @@ public:
     QXmppTransferFileInfo fileInfo() const;
     QUrl localFileUrl() const;
     void setLocalFileUrl(const QUrl &localFileUrl);
+    bool isResumable() const;
 
     /// \cond
     QDateTime fileDate() const;
