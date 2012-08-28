@@ -30,11 +30,6 @@
 
 const static char SocksVersion = 5;
 
-enum AuthenticationMethod {
-    NoAuthentication = 0,
-    NoAcceptableMethod = 255
-};
-
 enum Command {
     ConnectCommand = 1,
     BindCommand = 2,
@@ -61,8 +56,9 @@ enum ReplyType {
 
 enum State {
     ConnectState = 0,
-    CommandState = 1,
-    ReadyState = 2
+    AuthState = 1,
+    CommandState = 2,
+    ReadyState = 3
 };
 
 static QByteArray encodeHostAndPort(quint8 type, const QByteArray &host, quint16 port)
@@ -100,12 +96,27 @@ static bool parseHostAndPort(QDataStream &stream, quint8 &type, QByteArray &host
 
 QXmppSocksClient::QXmppSocksClient(const QString &proxyHost, quint16 proxyPort, QObject *parent)
     : QTcpSocket(parent),
+    m_authMethod(QXmppSocksAuthMethod::NoAuthentication),
     m_proxyHost(proxyHost),
     m_proxyPort(proxyPort),
     m_step(ConnectState)
 {
     connect(this, SIGNAL(connected()), this, SLOT(slotConnected()));
     connect(this, SIGNAL(readyRead()), this, SLOT(slotReadyRead()));
+}
+
+void QXmppSocksClient::clearAuthMethods()
+{
+    m_authMethods.clear();
+}
+
+bool QXmppSocksClient::addAuthMethod(QXmppSocksAuthMethod *authMethod)
+{
+    if (authMethod->type() < 0x00 || authMethod->type() > 0xFE || m_authMethods.size() >= 255)
+        return false;
+
+    m_authMethods[authMethod->type()] = authMethod;
+    return true;
 }
 
 void QXmppSocksClient::connectToHost(const QString &hostName, quint16 hostPort)
@@ -124,11 +135,37 @@ void QXmppSocksClient::slotConnected()
 
     // send connect to server
     QByteArray buffer;
+    buffer.resize(2);
+    buffer[0] = SocksVersion;
+    int nmethods = m_authMethods.size();
+    if (nmethods > 0) {
+        buffer[1] = m_authMethods.size();
+        QHash<enum QXmppSocksAuthMethod::Type, QXmppSocksAuthMethod *>::const_iterator it(m_authMethods.constBegin());
+        while (it != m_authMethods.constEnd()) {
+            buffer.append(it.key());
+            ++it;
+        }
+    } else {
+        buffer[1] = 0x01; // number of methods
+        buffer.append(QXmppSocksAuthMethod::NoAuthentication);
+    }
+    write(buffer);
+}
+
+QByteArray QXmppSocksClient::connectCommand()
+{
+    QByteArray buffer;
+
     buffer.resize(3);
     buffer[0] = SocksVersion;
-    buffer[1] = 0x01; // number of methods
-    buffer[2] = NoAuthentication;
-    write(buffer);
+    buffer[1] = ConnectCommand;
+    buffer[2] = 0x00; // reserved
+    buffer.append(encodeHostAndPort(
+        DomainName,
+        m_hostName.toLatin1(),
+        m_hostPort));
+
+    return buffer;
 }
 
 void QXmppSocksClient::slotReadyRead()
@@ -137,28 +174,46 @@ void QXmppSocksClient::slotReadyRead()
     {
         // receive connect to server response
         QByteArray buffer = readAll();
-        if (buffer.size() != 2 || buffer.at(0) != SocksVersion || buffer.at(1) != NoAuthentication)
+        if (buffer.size() != 2 || buffer.at(0) != SocksVersion)
         {
             qWarning("QXmppSocksClient received an invalid response during handshake");
             close();
             return;
         }
 
-        // advance state
-        m_step = CommandState;
-
-        // send CONNECT command
-        buffer.resize(3);
-        buffer[0] = SocksVersion;
-        buffer[1] = ConnectCommand;
-        buffer[2] = 0x00; // reserved
-        buffer.append(encodeHostAndPort(
-            DomainName,
-            m_hostName.toLatin1(),
-            m_hostPort));
-        write(buffer);
-
+        m_authMethod = (QXmppSocksAuthMethod::Type)buffer.at(1);
+        if (m_authMethod == QXmppSocksAuthMethod::NoAuthentication && (m_authMethods.size() == 0 || m_authMethods.contains(m_authMethod))) {
+            write(connectCommand());
+            m_step = CommandState;
+        } else if (m_authMethods.contains(m_authMethod)) {
+            QXmppSocksAuthMethod *m = m_authMethods[m_authMethod];
+            m->reset();
+            write(m->stepWrite());
+            m_step = AuthState;
+        } else {
+            qWarning("QXmppSocksClient received an invalid auth method");
+            close();
+            return;
+        }
+    } else if (m_step == AuthState) {
+        QXmppSocksAuthMethod *m = m_authMethods[m_authMethod];
+        m->stepRead(readAll());
+        switch (m->state()) {
+        case QXmppSocksAuthMethod::AuthOk:
+            write(connectCommand());
+            m_step = CommandState;
+            break;
+        case QXmppSocksAuthMethod::AuthFail:
+            qWarning("QXmppSocksClient authentication failed");
+            close();
+            break;
+        case QXmppSocksAuthMethod::AuthContinue:
+            write(m->stepWrite());
+            break;
+        }
     } else if (m_step == CommandState) {
+        m_step = ReadyState;
+
         // disconnect from signal
         disconnect(this, SIGNAL(readyRead()), this, SLOT(slotReadyRead()));
 
@@ -262,7 +317,7 @@ void QXmppSocksServer::slotReadyRead()
         bool foundMethod = false;
         for (int i = 2; i < buffer.size(); i++)
         {
-            if (buffer.at(i) == NoAuthentication)
+            if (buffer.at(i) == QXmppSocksAuthMethod::NoAuthentication)
             {
                 foundMethod = true;
                 break;
@@ -274,7 +329,7 @@ void QXmppSocksServer::slotReadyRead()
 
             buffer.resize(2);
             buffer[0] = SocksVersion;
-            buffer[1] = NoAcceptableMethod;
+            buffer[1] = QXmppSocksAuthMethod::NoAcceptableMethods;
             socket->write(buffer);
 
             socket->close();
@@ -287,7 +342,7 @@ void QXmppSocksServer::slotReadyRead()
         // send connect to server response
         buffer.resize(2);
         buffer[0] = SocksVersion;
-        buffer[1] = NoAuthentication;
+        buffer[1] = QXmppSocksAuthMethod::NoAuthentication;
         socket->write(buffer);
 
     } else if (m_states.value(socket) == CommandState) {

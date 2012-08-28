@@ -30,6 +30,7 @@ INSTALL_HEADERS += \
     base/QXmppRtpPacket.h \
     base/QXmppSessionIq.h \
     base/QXmppSocks.h \
+    base/QXmppSocksAuth.h \
     base/QXmppStanza.h \
     base/QXmppStream.h \
     base/QXmppStreamFeatures.h \
@@ -78,6 +79,7 @@ SOURCES += \
     base/QXmppSasl.cpp \
     base/QXmppSessionIq.cpp \
     base/QXmppSocks.cpp \
+    base/QXmppSocksAuth.cpp \
     base/QXmppStanza.cpp \
     base/QXmppStream.cpp \
     base/QXmppStreamFeatures.cpp \
