@@ -28,6 +28,7 @@
 #include <QTcpSocket>
 
 #include "QXmppGlobal.h"
+#include "QXmppSocksAuth.h"
 
 class QTcpServer;
 
@@ -39,6 +40,10 @@ public:
     QXmppSocksClient(const QString &proxyHost, quint16 proxyPort, QObject *parent=0);
     void connectToHost(const QString &hostName, quint16 hostPort);
 
+    // Set a custom authentication method.
+    bool addAuthMethod(QXmppSocksAuthMethod *authMethod);
+    void clearAuthMethods();
+
 signals:
     void ready();
 
@@ -47,6 +52,9 @@ private slots:
     void slotReadyRead();
 
 private:
+    QByteArray connectCommand();
+    QXmppSocksAuthMethod::Type m_authMethod;
+    QHash<enum QXmppSocksAuthMethod::Type, QXmppSocksAuthMethod *> m_authMethods;
     QString m_proxyHost;
     quint16 m_proxyPort;
     QString m_hostName;
