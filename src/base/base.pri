@@ -28,6 +28,7 @@ INSTALL_HEADERS += \
     base/QXmppRtcpPacket.h \
     base/QXmppRtpChannel.h \
     base/QXmppRtpPacket.h \
+    base/QXmppSasl.h \
     base/QXmppSessionIq.h \
     base/QXmppSocks.h \
     base/QXmppSocksAuth.h \
