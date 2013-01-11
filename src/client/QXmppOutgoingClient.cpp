@@ -421,20 +421,7 @@ void QXmppOutgoingClient::handleStanza(const QDomElement &nodeRecv)
                 return;
             }
             info(QString("SASL mechanism '%1' selected").arg(d->saslClient->mechanism()));
-            d->saslClient->setHost(d->config.domain());
-            d->saslClient->setServiceType("xmpp");
-            if (d->saslClient->mechanism() == "X-FACEBOOK-PLATFORM") {
-                d->saslClient->setUsername(configuration().facebookAppId());
-                d->saslClient->setPassword(configuration().facebookAccessToken());
-            } else if (d->saslClient->mechanism() == "X-MESSENGER-OAUTH2") {
-                d->saslClient->setPassword(configuration().windowsLiveAccessToken());
-            } else if (d->saslClient->mechanism() == "X-OAUTH2") {
-                d->saslClient->setUsername(configuration().user());
-                d->saslClient->setPassword(configuration().googleAccessToken());
-            } else {
-                d->saslClient->setUsername(configuration().user());
-                d->saslClient->setPassword(configuration().password());
-            }
+            d->saslClient->configure(d->config);
 
             // send SASL auth request
             QByteArray response;

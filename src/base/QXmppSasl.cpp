@@ -4,6 +4,7 @@
  * Authors:
  *  Manjeet Dahiya
  *  Jeremy Lainé
+ *  Andreas Oberritter
  *
  * Source:
  *  https://github.com/qxmpp-project/qxmpp
@@ -26,6 +27,7 @@
 
 #include <QCryptographicHash>
 #include <QDomElement>
+#include <QHash>
 #include <QStringList>
 #if QT_VERSION >= 0x050000
 #include <QUrlQuery>
@@ -217,7 +219,31 @@ public:
     QString serviceType;
     QString username;
     QString password;
+
+    static QHash<QString, QXmppSaslClientFactory> mechanisms;
+private:
+    static QHash<QString, QXmppSaslClientFactory> builtinMechanisms();
 };
+
+/// Initializes the list of mechanisms supported out-of-the-box.
+
+QHash<QString, QXmppSaslClientFactory> QXmppSaslClientPrivate::builtinMechanisms()
+{
+    QHash<QString, QXmppSaslClientFactory> m;
+
+    m.insert("PLAIN", QXmppSaslClientPlain::create);
+    m.insert("DIGEST-MD5", QXmppSaslClientDigestMd5::create);
+    m.insert("ANONYMOUS", QXmppSaslClientAnonymous::create);
+    m.insert("X-FACEBOOK-PLATFORM", QXmppSaslClientFacebook::create);
+    m.insert("X-MESSENGER-OAUTH2", QXmppSaslClientWindowsLive::create);
+    m.insert("X-OAUTH2", QXmppSaslClientGoogle::create);
+
+    return m;
+}
+
+/// Set of known mechanisms.
+
+QHash<QString, QXmppSaslClientFactory> QXmppSaslClientPrivate::mechanisms = builtinMechanisms();
 
 QXmppSaslClient::QXmppSaslClient(QObject *parent)
     : QXmppLoggable(parent)
@@ -230,94 +256,51 @@ QXmppSaslClient::~QXmppSaslClient()
     delete d;
 }
 
+/// Adds a new mechanism.
+
+void QXmppSaslClient::addMechanism(const QString &mechanism, QXmppSaslClientFactory factory)
+{
+    QXmppSaslClientPrivate::mechanisms.insert(mechanism, factory);
+}
+
+/// Removes an existing mechanism.
+
+void QXmppSaslClient::removeMechanism(const QString &mechanism)
+{
+    QXmppSaslClientPrivate::mechanisms.remove(mechanism);
+}
+
 /// Returns a list of supported mechanisms.
 
 QStringList QXmppSaslClient::availableMechanisms()
 {
-    return QStringList() << "PLAIN" << "DIGEST-MD5" << "ANONYMOUS" << "X-FACEBOOK-PLATFORM" << "X-MESSENGER-OAUTH2" << "X-OAUTH2";
+    return QXmppSaslClientPrivate::mechanisms.keys();
 }
 
 /// Creates an SASL client for the given mechanism.
 
 QXmppSaslClient* QXmppSaslClient::create(const QString &mechanism, QObject *parent)
 {
-    if (mechanism == "PLAIN") {
-        return new QXmppSaslClientPlain(parent);
-    } else if (mechanism == "DIGEST-MD5") {
-        return new QXmppSaslClientDigestMd5(parent);
-    } else if (mechanism == "ANONYMOUS") {
-        return new QXmppSaslClientAnonymous(parent);
-    } else if (mechanism == "X-FACEBOOK-PLATFORM") {
-        return new QXmppSaslClientFacebook(parent);
-    } else if (mechanism == "X-MESSENGER-OAUTH2") {
-        return new QXmppSaslClientWindowsLive(parent);
-    } else if (mechanism == "X-OAUTH2") {
-        return new QXmppSaslClientGoogle(parent);
-    } else {
-        return 0;
-    }
+    QHash<QString, QXmppSaslClientFactory>::iterator i(QXmppSaslClientPrivate::mechanisms.find(mechanism));
+    if (i != QXmppSaslClientPrivate::mechanisms.end())
+        return i.value()(parent);
+    return 0;
 }
 
-/// Returns the host.
-
-QString QXmppSaslClient::host() const
+void QXmppSaslClient::configure(const QXmppConfiguration &conf)
 {
-    return d->host;
-}
-
-/// Sets the host.
-
-void QXmppSaslClient::setHost(const QString &host)
-{
-    d->host = host;
-}
-
-/// Returns the service type, e.g. "xmpp".
-
-QString QXmppSaslClient::serviceType() const
-{
-    return d->serviceType;
-}
-
-/// Sets the service type, e.g. "xmpp".
-
-void QXmppSaslClient::setServiceType(const QString &serviceType)
-{
-    d->serviceType = serviceType;
-}
-
-/// Returns the username.
-
-QString QXmppSaslClient::username() const
-{
-    return d->username;
-}
-
-/// Sets the username.
-
-void QXmppSaslClient::setUsername(const QString &username)
-{
-    d->username = username;
-}
-
-/// Returns the password.
-
-QString QXmppSaslClient::password() const
-{
-    return d->password;
-}
-
-/// Sets the password.
-
-void QXmppSaslClient::setPassword(const QString &password)
-{
-    d->password = password;
+    Q_UNUSED(conf);
 }
 
 QXmppSaslClientAnonymous::QXmppSaslClientAnonymous(QObject *parent)
     : QXmppSaslClient(parent)
     , m_step(0)
 {
+}
+
+QXmppSaslClient *QXmppSaslClientAnonymous::create(QObject *parent)
+{
+    return new QXmppSaslClientAnonymous(parent);
 }
 
 QString QXmppSaslClientAnonymous::mechanism() const
@@ -346,15 +329,28 @@ QXmppSaslClientDigestMd5::QXmppSaslClientDigestMd5(QObject *parent)
     m_cnonce = generateNonce();
 }
 
+QXmppSaslClient *QXmppSaslClientDigestMd5::create(QObject *parent)
+{
+    return new QXmppSaslClientDigestMd5(parent);
+}
+
 QString QXmppSaslClientDigestMd5::mechanism() const
 {
     return "DIGEST-MD5";
 }
 
+void QXmppSaslClientDigestMd5::configure(const QXmppConfiguration &conf)
+{
+    m_host = conf.domain();
+    m_serviceType = QLatin1String("xmpp");
+    m_username = conf.user();
+    m_password = conf.password();
+}
+
 bool QXmppSaslClientDigestMd5::respond(const QByteArray &challenge, QByteArray &response)
 {
     Q_UNUSED(challenge);
-    const QByteArray digestUri = QString("%1/%2").arg(serviceType(), host()).toUtf8();
+    const QByteArray digestUri = QString("%1/%2").arg(m_serviceType, m_host).toUtf8();
 
     if (m_step == 0) {
         response = QByteArray();
@@ -380,12 +376,12 @@ bool QXmppSaslClientDigestMd5::respond(const QByteArray &challenge, QByteArray &
 
         m_nonce = input.value("nonce");
         m_secret = QCryptographicHash::hash(
-            username().toUtf8() + ":" + realm + ":" + password().toUtf8(),
+            m_username.toUtf8() + ":" + realm + ":" + m_password.toUtf8(),
             QCryptographicHash::Md5);
 
         // Build response
         QMap<QByteArray, QByteArray> output;
-        output["username"] = username().toUtf8();
+        output["username"] = m_username.toUtf8();
         if (!realm.isEmpty())
             output["realm"] = realm;
         output["nonce"] = m_nonce;
@@ -423,9 +419,20 @@ QXmppSaslClientFacebook::QXmppSaslClientFacebook(QObject *parent)
 {
 }
 
+QXmppSaslClient *QXmppSaslClientFacebook::create(QObject *parent)
+{
+    return new QXmppSaslClientFacebook(parent);
+}
+
 QString QXmppSaslClientFacebook::mechanism() const
 {
     return "X-FACEBOOK-PLATFORM";
+}
+
+void QXmppSaslClientFacebook::configure(const QXmppConfiguration &conf)
+{
+    m_accessToken = conf.facebookAccessToken();
+    m_apiKey = conf.facebookAppId();
 }
 
 bool QXmppSaslClientFacebook::respond(const QByteArray &challenge, QByteArray &response)
@@ -454,9 +461,9 @@ bool QXmppSaslClientFacebook::respond(const QByteArray &challenge, QByteArray &r
 #else
         QUrl responseUrl;
 #endif
-        responseUrl.addQueryItem("access_token", password());
-        responseUrl.addQueryItem("api_key", username());
-        responseUrl.addQueryItem("call_id", 0);
+        responseUrl.addQueryItem("access_token", m_accessToken);
+        responseUrl.addQueryItem("api_key", m_apiKey);
+        responseUrl.addQueryItem("call_id", QLatin1String(""));
         responseUrl.addQueryItem("method", requestUrl.queryItemValue("method"));
         responseUrl.addQueryItem("nonce", requestUrl.queryItemValue("nonce"));
         responseUrl.addQueryItem("v", "1.0");
@@ -480,9 +487,20 @@ QXmppSaslClientGoogle::QXmppSaslClientGoogle(QObject *parent)
 {
 }
 
+QXmppSaslClient *QXmppSaslClientGoogle::create(QObject *parent)
+{
+    return new QXmppSaslClientGoogle(parent);
+}
+
 QString QXmppSaslClientGoogle::mechanism() const
 {
     return "X-OAUTH2";
+}
+
+void QXmppSaslClientGoogle::configure(const QXmppConfiguration &conf)
+{
+    m_username = conf.user();
+    m_accessToken = conf.googleAccessToken();
 }
 
 bool QXmppSaslClientGoogle::respond(const QByteArray &challenge, QByteArray &response)
@@ -490,7 +508,7 @@ bool QXmppSaslClientGoogle::respond(const QByteArray &challenge, QByteArray &res
     Q_UNUSED(challenge);
     if (m_step == 0) {
         // send initial response
-        response = QString('\0' + username() + '\0' + password()).toUtf8();
+        response = QString('\0' + m_username + '\0' + m_accessToken).toUtf8();
         m_step++;
         return true;
     } else {
@@ -505,16 +523,27 @@ QXmppSaslClientPlain::QXmppSaslClientPlain(QObject *parent)
 {
 }
 
+QXmppSaslClient *QXmppSaslClientPlain::create(QObject *parent)
+{
+    return new QXmppSaslClientPlain(parent);
+}
+
 QString QXmppSaslClientPlain::mechanism() const
 {
     return "PLAIN";
+}
+
+void QXmppSaslClientPlain::configure(const QXmppConfiguration &conf)
+{
+    m_username = conf.user();
+    m_password = conf.password();
 }
 
 bool QXmppSaslClientPlain::respond(const QByteArray &challenge, QByteArray &response)
 {
     Q_UNUSED(challenge);
     if (m_step == 0) {
-        response = QString('\0' + username() + '\0' + password()).toUtf8();
+        response = QString('\0' + m_username + '\0' + m_password).toUtf8();
         m_step++;
         return true;
     } else {
@@ -529,9 +558,19 @@ QXmppSaslClientWindowsLive::QXmppSaslClientWindowsLive(QObject *parent)
 {
 }
 
+QXmppSaslClient *QXmppSaslClientWindowsLive::create(QObject *parent)
+{
+    return new QXmppSaslClientWindowsLive(parent);
+}
+
 QString QXmppSaslClientWindowsLive::mechanism() const
 {
     return "X-MESSENGER-OAUTH2";
+}
+
+void QXmppSaslClientWindowsLive::configure(const QXmppConfiguration &conf)
+{
+    m_accessToken = conf.windowsLiveAccessToken();
 }
 
 bool QXmppSaslClientWindowsLive::respond(const QByteArray &challenge, QByteArray &response)
@@ -539,7 +578,7 @@ bool QXmppSaslClientWindowsLive::respond(const QByteArray &challenge, QByteArray
     Q_UNUSED(challenge);
     if (m_step == 0) {
         // send initial response
-        response = QByteArray::fromBase64(password().toLatin1());
+        response = QByteArray::fromBase64(m_accessToken.toLatin1());
         m_step++;
         return true;
     } else {
