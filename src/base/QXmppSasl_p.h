@@ -1,9 +1,10 @@
 /*
- * Copyright (C) 2008-2012 The QXmpp developers
+ * Copyright (C) 2008-2013 The QXmpp developers
  *
  * Authors:
  *  Manjeet Dahiya
  *  Jeremy Lainé
+ *  Andreas Oberritter
  *
  * Source:
  *  http://code.google.com/p/qxmpp
@@ -28,11 +29,12 @@
 #include <QByteArray>
 #include <QMap>
 
+#include "QXmppConfiguration.h"
 #include "QXmppGlobal.h"
 #include "QXmppLogger.h"
+#include "QXmppSasl.h"
 #include "QXmppStanza.h"
 
-class QXmppSaslClientPrivate;
 class QXmppSaslServerPrivate;
 
 //
@@ -47,34 +49,6 @@ class QXmppSaslServerPrivate;
 //
 // We mean it.
 //
-
-class QXMPP_AUTOTEST_EXPORT QXmppSaslClient : public QXmppLoggable
-{
-public:
-    QXmppSaslClient(QObject *parent = 0);
-    virtual ~QXmppSaslClient();
-
-    QString host() const;
-    void setHost(const QString &host);
-
-    QString serviceType() const;
-    void setServiceType(const QString &serviceType);
-
-    QString username() const;
-    void setUsername(const QString &username);
-
-    QString password() const;
-    void setPassword(const QString &password);
-
-    virtual QString mechanism() const = 0;
-    virtual bool respond(const QByteArray &challenge, QByteArray &response) = 0;
-
-    static QStringList availableMechanisms();
-    static QXmppSaslClient* create(const QString &mechanism, QObject *parent = 0);
-
-private:
-    QXmppSaslClientPrivate *d;
-};
 
 class QXMPP_AUTOTEST_EXPORT QXmppSaslServer : public QXmppLoggable
 {
@@ -210,6 +184,8 @@ public:
     QString mechanism() const;
     bool respond(const QByteArray &challenge, QByteArray &response);
 
+    static QXmppSaslClient *create(QObject *parent);
+
 private:
     int m_step;
 };
@@ -219,9 +195,16 @@ class QXmppSaslClientDigestMd5 : public QXmppSaslClient
 public:
     QXmppSaslClientDigestMd5(QObject *parent = 0);
     QString mechanism() const;
+    void configure(const QXmppConfiguration &conf);
     bool respond(const QByteArray &challenge, QByteArray &response);
 
+    static QXmppSaslClient *create(QObject *parent);
+
 private:
+    QString m_host;
+    QString m_serviceType;
+    QString m_username;
+    QString m_password;
     QByteArray m_cnonce;
     QByteArray m_nc;
     QByteArray m_nonce;
@@ -234,9 +217,14 @@ class QXmppSaslClientFacebook : public QXmppSaslClient
 public:
     QXmppSaslClientFacebook(QObject *parent = 0);
     QString mechanism() const;
+    void configure(const QXmppConfiguration &conf);
     bool respond(const QByteArray &challenge, QByteArray &response);
 
+    static QXmppSaslClient *create(QObject *parent);
+
 private:
+    QString m_accessToken;
+    QString m_apiKey;
     int m_step;
 };
 
@@ -245,9 +233,14 @@ class QXmppSaslClientGoogle : public QXmppSaslClient
 public:
     QXmppSaslClientGoogle(QObject *parent = 0);
     QString mechanism() const;
+    void configure(const QXmppConfiguration &conf);
     bool respond(const QByteArray &challenge, QByteArray &response);
 
+    static QXmppSaslClient *create(QObject *parent);
+
 private:
+    QString m_username;
+    QString m_accessToken;
     int m_step;
 };
 
@@ -256,9 +249,14 @@ class QXmppSaslClientPlain : public QXmppSaslClient
 public:
     QXmppSaslClientPlain(QObject *parent = 0);
     QString mechanism() const;
+    void configure(const QXmppConfiguration &conf);
     bool respond(const QByteArray &challenge, QByteArray &response);
 
+    static QXmppSaslClient *create(QObject *parent);
+
 private:
+    QString m_username;
+    QString m_password;
     int m_step;
 };
 
@@ -267,9 +265,13 @@ class QXmppSaslClientWindowsLive : public QXmppSaslClient
 public:
     QXmppSaslClientWindowsLive(QObject *parent = 0);
     QString mechanism() const;
+    void configure(const QXmppConfiguration &conf);
     bool respond(const QByteArray &challenge, QByteArray &response);
 
+    static QXmppSaslClient *create(QObject *parent);
+
 private:
+    QString m_accessToken;
     int m_step;
 };
 
