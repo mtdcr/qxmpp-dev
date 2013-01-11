@@ -186,7 +186,11 @@ void tst_QXmppSasl::testSuccess()
 
 void tst_QXmppSasl::testClientAvailableMechanisms()
 {
-    QCOMPARE(QXmppSaslClient::availableMechanisms(), QStringList() << "PLAIN" << "DIGEST-MD5" << "ANONYMOUS" << "X-FACEBOOK-PLATFORM" << "X-MESSENGER-OAUTH2" << "X-OAUTH2");
+    QStringList a = QStringList() << "PLAIN" << "DIGEST-MD5" << "ANONYMOUS" << "X-FACEBOOK-PLATFORM" << "X-MESSENGER-OAUTH2" << "X-OAUTH2";
+    QStringList b = QXmppSaslClient::availableMechanisms();
+    a.sort();
+    b.sort();
+    QCOMPARE(a, b);
 }
 
 void tst_QXmppSasl::testClientBadMechanism()
@@ -230,10 +234,11 @@ void tst_QXmppSasl::testClientDigestMd5()
     QVERIFY(client != 0);
     QCOMPARE(client->mechanism(), QLatin1String("DIGEST-MD5"));
 
-    client->setUsername("qxmpp1");
-    client->setPassword("qxmpp123");
-    client->setHost("jabber.ru");
-    client->setServiceType("xmpp");
+    QXmppConfiguration conf;
+    conf.setDomain("jabber.ru");
+    conf.setUser("qxmpp1");
+    conf.setPassword("qxmpp123");
+    client->configure(conf);
 
     // initial step returns nothing
     QByteArray response;
@@ -258,8 +263,10 @@ void tst_QXmppSasl::testClientFacebook()
     QVERIFY(client != 0);
     QCOMPARE(client->mechanism(), QLatin1String("X-FACEBOOK-PLATFORM"));
 
-    client->setUsername("123456789012345");
-    client->setPassword("abcdefghijlkmno");
+    QXmppConfiguration conf;
+    conf.setFacebookAppId("123456789012345");
+    conf.setFacebookAccessToken("abcdefghijlkmno");
+    client->configure(conf);
 
     // initial step returns nothing
     QByteArray response;
@@ -282,8 +289,10 @@ void tst_QXmppSasl::testClientGoogle()
     QVERIFY(client != 0);
     QCOMPARE(client->mechanism(), QLatin1String("X-OAUTH2"));
 
-    client->setUsername("foo");
-    client->setPassword("bar");
+    QXmppConfiguration conf;
+    conf.setUser("foo");
+    conf.setGoogleAccessToken("bar");
+    client->configure(conf);
 
     // initial step returns data
     QByteArray response;
@@ -302,8 +311,10 @@ void tst_QXmppSasl::testClientPlain()
     QVERIFY(client != 0);
     QCOMPARE(client->mechanism(), QLatin1String("PLAIN"));
 
-    client->setUsername("foo");
-    client->setPassword("bar");
+    QXmppConfiguration conf;
+    conf.setUser("foo");
+    conf.setPassword("bar");
+    client->configure(conf);
 
     // initial step returns data
     QByteArray response;
@@ -322,7 +333,9 @@ void tst_QXmppSasl::testClientWindowsLive()
     QVERIFY(client != 0);
     QCOMPARE(client->mechanism(), QLatin1String("X-MESSENGER-OAUTH2"));
 
-    client->setPassword(QByteArray("footoken").toBase64());
+    QXmppConfiguration conf;
+    conf.setWindowsLiveAccessToken(QByteArray("footoken").toBase64());
+    client->configure(conf);
 
     // initial step returns data
     QByteArray response;
