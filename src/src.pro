@@ -40,7 +40,7 @@ HEADERS += $$INSTALL_HEADERS
 
 # Installation
 headers.files = $$INSTALL_HEADERS
-headers.path = $$PREFIX/include/qxmpp
+headers.path = $$PREFIX/include/$$QXMPP_LIBRARY_NAME
 target.path = $$PREFIX/$$LIBDIR
 INSTALLS += headers target
 
