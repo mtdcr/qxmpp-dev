@@ -39,6 +39,7 @@ You can pass the following arguments to qmake:
                                       unix:  /usr/local on unix
                                       other: $$[QT_INSTALL_PREFIX]
     QXMPP_AUTOTEST_INTERNAL=1     to enabled internal autotests
+    QXMPP_LIBRARY_NAME=qxmpp      to override the library name
     QXMPP_LIBRARY_TYPE=staticlib  to build a static version of QXmpp
     QXMPP_USE_DOXYGEN=1           to build the HTML documentation
     QXMPP_USE_OPUS=1              to enable opus audio codec
