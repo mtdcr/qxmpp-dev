@@ -5,10 +5,12 @@ QXMPP_VERSION = 0.8.0
 QXMPP_INCLUDEPATH = $$PWD/src/base $$PWD/src/client $$PWD/src/server
 
 # Determine library name
-CONFIG(debug, debug|release) {
-    QXMPP_LIBRARY_NAME = qxmpp_d
-} else {
-    QXMPP_LIBRARY_NAME = qxmpp
+isEmpty(QXMPP_LIBRARY_NAME) {
+    CONFIG(debug, debug|release) {
+        QXMPP_LIBRARY_NAME = qxmpp_d
+    } else {
+        QXMPP_LIBRARY_NAME = qxmpp
+    }
 }
 
 # Determine library type (shared or staticlib)
